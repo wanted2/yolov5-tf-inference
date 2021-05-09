@@ -96,9 +96,13 @@ class VideoInference(ImageInference):
 
 
 class VideoInferenceNoShow(VideoInference):
+    queue = []
+
     def __init__(self, model_path: str, conf_thres: float,
-                 iou_thres: float, target_classes: Iterable[str]) -> None:
+                 iou_thres: float, target_classes: Iterable[str],
+                 batch_size: int = 10) -> None:
         super().__init__(model_path, conf_thres, iou_thres, target_classes)
+        self.batch_size = batch_size
 
     @Paralellism.threadize
     def process(self, x, img, out: str):
@@ -107,7 +111,7 @@ class VideoInferenceNoShow(VideoInference):
         LOGGER.debug(f'Output numpy array to {out}')
         vis_img = img.copy()
         H, W, _ = img.shape
-        for bbox in results[0]:
+        for bbox in results[-1]:
             x1, y1, x2, y2, _, _ = bbox
             x1, y1, x2, y2 = x1 * W / 640, y1 / H * 640, \
                 x2 * W / 640, y2 / H * 640
@@ -128,8 +132,15 @@ class VideoInferenceNoShow(VideoInference):
                     break
                 x = img.copy()[:, :, [2, 1, 0]]
                 x = cv2.resize(x, (640, 640)).astype('float32')
-                x = x.transpose([-1, 0, 1])
-                self.process(x / 255., img, out=f'{outdir}/{count}')
+                x = x.transpose([-1, 0, 1])[np.newaxis, ...]
+                if len(self.queue) < self.batch_size:
+                    self.queue.append(x / 255.)
+                else:
+                    LOGGER.debug(
+                        f'There are {len(self.queue)} images in the queue')
+                    X = np.concatenate(self.queue[:self.batch_size], axis=0)
+                    self.queue = self.queue[self.batch_size:]
+                    self.process(X, img, out=f'{outdir}/{count}')
                 cv2.imshow('vis', np.array(img))
                 if cv2.waitKey(30) == ord('q'):
                     break
