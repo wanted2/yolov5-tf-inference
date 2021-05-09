@@ -1,0 +1,6 @@
+onnx
+onnx-tf>=1.8.0
+seaborn
+tensorflow-gpu>=2.0
+setuptools
+pycocotools-windows
